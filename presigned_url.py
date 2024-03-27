@@ -1,43 +1,18 @@
 
-import logging
+import os
+import sys
+
 import boto3
 from botocore.client import Config
-import os
 import requests    # To install: pip install requests
 from botocore.exceptions import ClientError
 
 
-def create_presigned_post(
-        bucket_name, object_name, fields=None, conditions=None, expiration=3600,
-    ):
-    """Generate a presigned URL S3 POST request to upload a file
-
-    :param bucket_name: string
-    :param object_name: string
-    :param fields: Dictionary of prefilled form fields
-    :param conditions: List of conditions to include in the policy
-    :param expiration: Time in seconds for the presigned URL to remain valid
-    :return: Dictionary with the following keys:
-        url: URL to post to
-        fields: Dictionary of form fields and values to submit with the POST
-    :return: None if error.
-    """
-
-    # Generate a presigned S3 POST URL
-    try:
-        response = s3_client.generate_presigned_post(
-            bucket_name,
-            object_name,
-            Fields=fields,
-            Conditions=[["starts-with", "$key", "user/job/"]],
-            ExpiresIn=expiration,
-        )
-    except ClientError as e:
-        print(e)
-        return None
-
-    # The response contains the presigned URL and required fields
-    return response
+# take expiration from command line arguments if passed
+if len(sys.argv) > 1:
+    expiration = int(sys.argv[1])
+else:
+    expiration = 3600
 
 
 ACCESS_KEY = os.getenv("ACCESS_KEY")
@@ -53,29 +28,48 @@ s3_client = boto3.client(
     region_name=region,
 )
 
-object_name = "myfolder/${filename}"
-expiration = 3600
+prefix = "myfolder/"
 
-policy = s3_client.generate_presigned_post(
+presigned_post = s3_client.generate_presigned_post(
     bucket_name,
-    object_name,
+    prefix + "${filename}",
     Fields=None,
-    Conditions=[["starts-with", "$key", "myfolder/"]],
+    Conditions=[["starts-with", "$key", prefix]],
     ExpiresIn=expiration,
 )
 
-
-def upload_files(filepath, policy):
-    for i in range(1, 3):
-        with open(filepath, 'rb') as f:
-            files = {'file': (filepath, f)}
-            fields = policy['fields']
-            fields['key'] = f"myfolder/{i}.txt"
-            http_response = requests.post(policy['url'], data=fields, files=files)
-    # If successful, returns HTTP status code 204
-    print(http_response.text)
-    print(f'File upload HTTP status code: {http_response.status_code}')
-
+presigned_get = s3_client.generate_presigned_url(
+    'get_object',
+    Params={'Bucket': bucket_name, 'Key': prefix + "put.txt"},
+    ExpiresIn=expiration,
+)
+print('get', presigned_get)
+presigned_put = s3_client.generate_presigned_url(
+    'put_object',
+    Params={'Bucket': bucket_name, 'Key': prefix + "put.txt"},
+    ExpiresIn=expiration,
+)
+print('put', presigned_put)
 
 filepath = "./test.txt"
-upload_files(filepath, policy)
+with open(filepath, 'rb') as f:
+    response_put = requests.put(presigned_put, data=f)
+    print(response_put.status_code, response_put.text)
+response_get = requests.get(presigned_get)
+print(response_get.status_code, response_get.text)
+with open("presigned_get.txt", mode="wb") as file:
+    file.write(response_get.content)
+
+
+def upload_file(filepath, object_name, policy):
+    with open(filepath, 'rb') as f:
+        files = {'file': (filepath, f)}
+        fields = policy['fields']
+        fields['key'] = object_name
+        http_response = requests.post(policy['url'], data=fields, files=files)
+    # If successful, returns HTTP status code 204
+    print(f'File upload HTTP status code: {http_response.status_code}, text: {http_response.text}')
+
+
+# filepath = "./test.txt"
+# upload_file(filepath, 'myfolder/test1.txt', policy)  # should be success
