@@ -1,18 +1,8 @@
-
+```python
 import os
-import sys
-
 import boto3
 from botocore.client import Config
 import requests    # To install: pip install requests
-from botocore.exceptions import ClientError
-
-
-# take expiration from command line arguments if passed
-if len(sys.argv) > 1:
-    expiration = int(sys.argv[1])
-else:
-    expiration = 3600
 
 
 ACCESS_KEY = os.getenv("ACCESS_KEY")
@@ -75,7 +65,7 @@ presigned_post = s3_client.generate_presigned_post(
     prefix + "${filename}",
     Fields=None,
     Conditions=[["starts-with", "$key", prefix]],
-    ExpiresIn=expiration,
+    ExpiresIn=60,
 )
 print(presigned_post)
 
@@ -91,5 +81,7 @@ def upload_post_file(filepath, object_name, policy):
 
 
 filepath = "test.txt"
-upload_post_file(filepath, 'test/post_test4.txt', presigned_post)
+upload_post_file(filepath, 'test/post_test1.txt', presigned_post)
 upload_post_file(filepath, 'test/post_test2.txt', presigned_post)
+
+```
